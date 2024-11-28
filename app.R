@@ -195,7 +195,6 @@ ui <- dashboardPage(
       
       tabItem(
         tabName = "trend_analysis",
-        
         fluidRow(
           
             box(
@@ -218,7 +217,9 @@ ui <- dashboardPage(
                 solidHeader = TRUE,
                 
                 tabPanel(
-                  "Quarterly"
+                  "Quarterly",
+                  highchartOutput("quarterly_trend_chart")
+                  
                 ),
                 tabPanel(
                   "Annual"
@@ -227,7 +228,141 @@ ui <- dashboardPage(
               )
             )
         )
+      ),
+      
+      tabItem(
+        tabName = "trend_analysis"
+      ),
+      tabItem(
+        tabName = "data",
+        DTOutput("data_table")
+      ),
+      
+      tabItem(
+        tabName = "methodology",
+        
+        fluidRow(
+          box(
+            title = "Methodology Overview",
+            width = 12,
+            status = "info",
+            collapsible = FALSE,
+            solidHeader = TRUE,
+            p("This section provides detailed insights into the technical implementation of the CPI Dashboard. 
+        The app is designed to be fully reproducible and dynamically responsive to new data. 
+        Whenever there is an update to the CPI data, the only requirement is to update the underlying 
+        SQLite database. The dashboard, including charts, tables, and descriptive text, automatically 
+        adapts to reflect the updated data.")
+          )
+        ),
+        
+        fluidRow(
+          box(
+            title = "Libraries Used",
+            width = 6,
+            status = "primary",
+            collapsible = TRUE,
+            solidHeader = TRUE,
+            tags$ul(
+              tags$li(strong("shiny:"), " Core library for building interactive web applications."),
+              tags$li(strong("bs4Dash:"), " Enables the creation of aesthetically pleasing dashboards using Bootstrap 4."),
+              tags$li(strong("highcharter:"), " Facilitates the creation of dynamic and interactive charts."),
+              tags$li(strong("rsconnect:"), " Used for deploying the app to cloud platforms like shinyapps.io."),
+              tags$li(strong("DBI & RSQLite:"), " Provide database connectivity and querying capabilities."),
+              tags$li(strong("dplyr:"), " Streamlines data manipulation and filtering."),
+              tags$li(strong("DT:"), " Renders interactive data tables.")
+            )
+          ),
+          
+          box(
+            title = "UI Design with bs4Dash",
+            width = 6,
+            status = "success",
+            collapsible = TRUE,
+            solidHeader = TRUE,
+            p("The app's UI is structured using ", strong("bs4Dash"), " components such as boxes, tabs, and ribbons."),
+            tags$ul(
+              tags$li(strong("dashboardPage:"), " Defines the structure of the dashboard, including the header, sidebar, and body."),
+              tags$li(strong("box:"), " Encapsulates content like visualizations and text blocks."),
+              tags$li(strong("tabBox:"), " Organizes content into tabs for better navigation."),
+              tags$li(strong("ribbon:"), " Adds dynamic visual context to charts.")
+            ),
+            pre(
+              code("ribbon(
+  text = paste(input$select_quarter, input$select_year),
+  color = 'olive'
+)")
+            )
+          )
+        ),
+        
+        fluidRow(
+          box(
+            title = "Data Management & Reproducibility",
+            width = 6,
+            status = "warning",
+            collapsible = TRUE,
+            solidHeader = TRUE,
+            p("The app connects to an SQLite database to fetch CPI data. 
+         This setup ensures that updates are seamless—simply replace or update the database, 
+         and the dashboard automatically adapts to reflect the new data."),
+            tags$ul(
+              tags$li("Database integration is achieved using ", strong("DBI"), " and ", strong("RSQLite"), "."),
+              tags$li("Data manipulation is performed with ", strong("dplyr"), "."),
+              tags$li("Filters dynamically update visualizations and outputs without additional manual intervention.")
+            ),
+            pre(
+              code("db_connection <- dbConnect(RSQLite::SQLite(), 'cpi.db')
+expenditure_data <- dbReadTable(db_connection, 'exp_comp')
+dbDisconnect(db_connection)")
+            )
+          ),
+          
+          box(
+            title = "Dynamic Charts & Tables",
+            width = 6,
+            status = "danger",
+            collapsible = TRUE,
+            solidHeader = TRUE,
+            p("The app uses ", strong("highcharter"), " and ", strong("DT"), " to create interactive charts and tables. 
+         These components are directly tied to the reactive data pipeline, ensuring that changes in the 
+         database are immediately reflected in the visualizations and data tables."),
+            pre(
+              code("output$bar_chart <- renderHighchart({
+  data <- filtered_data() %>%
+    mutate(Value = round(Value * 100, 1)) %>%
+    filter(!is.na(Value))
+  
+  hchart(
+    data,
+    type = 'bar',
+    hcaes(x = ExpenditureGroup, y = Value)
+  ) %>% 
+    hc_chart(inverted = TRUE) %>% 
+    hc_xAxis(title = list(text = 'Expenditure Group'), categories = data$ExpenditureGroup) %>%
+    hc_yAxis(title = list(text = 'CPI Change (%)'), gridLineWidth = 1) %>%
+    hc_tooltip(pointFormat = 'CPI Change: <b>{point.y}%</b>')
+})")
+            )
+          )
+        ),
+        
+        fluidRow(
+          box(
+            title = "Deployment",
+            width = 12,
+            status = "secondary",
+            collapsible = TRUE,
+            solidHeader = TRUE,
+            p("The app is deployable using ", strong("rsconnect"), ". Ensure all dependencies are installed before deployment. 
+        The reproducibility design ensures minimal maintenance even after deployment."),
+            pre(
+              code("rsconnect::deployApp()")
+            )
+          )
+        )
       )
+      
       
     )
   )
@@ -241,6 +376,7 @@ server <- function(input, output, session) {
   library(RSQLite)
   library(highcharter)
   library(dplyr)
+  library(DT)
   
   # Connect to SQLite database
   db_connection <- dbConnect(RSQLite::SQLite(), "cpi.db")
@@ -323,6 +459,17 @@ server <- function(input, output, session) {
     )
   })
   
+  output$data_table <- renderDT({
+    
+    expenditure_data %>% 
+      select(Year, Location, ExpenditureGroup, Indicator, Value, Quarter) %>% 
+      unique() %>% 
+      rename(
+        `Expenditure Group` = ExpenditureGroup
+      )
+    
+  })
+  
   # Generate the horizontal bar chart with Highcharter based on quarter filter
   output$bar_chart <- renderHighchart({
     data <- cpi_data_quarter_filter() %>%
@@ -343,6 +490,72 @@ server <- function(input, output, session) {
       hc_exporting(enabled = TRUE) %>%  # Enable export options
       hc_chart(zoomType = "xy") 
   })
+  
+  #Trend analysis
+  
+  # Filter data for "Quarter on Quarter Percentage Change"
+  quarterly_trend_data <- expenditure_data %>%
+    filter(Indicator == "Quarter on Quarter Percentage Change") %>%
+    arrange(Location, Year, Quarter)
+  
+  # Create a reactive dataset to apply user-selected filters dynamically
+  filtered_quarterly_trend_data <- reactive({
+    req(input$select_year)  # Ensure year input is selected
+    quarterly_trend_data %>%
+      filter(Year == input$select_year) %>%
+      mutate(
+        Quarter = factor(
+          Quarter,
+          levels = c("1st", "2nd", "3rd", "4th"),
+          labels = c("Q1", "Q2", "Q3", "Q4")
+        )
+      )
+  })
+  
+  # Render the line chart
+  output$quarterly_trend_chart <- renderHighchart({
+    # Get the filtered data
+    data <- filtered_quarterly_trend_data()
+    
+    # Create the highchart object
+    hchart(
+      data,
+      type = "line",
+      hcaes(
+        x = Quarter,
+        y = Value,
+        group = Location
+      )
+    ) %>%
+      hc_title(
+        text = paste("Quarterly CPI Trends for", input$select_year)
+      ) %>%
+      hc_xAxis(
+        title = list(text = "Quarter"),
+        categories = c("Q1", "Q2", "Q3", "Q4")
+      ) %>%
+      hc_yAxis(
+        title = list(text = "CPI Change (%)"),
+        labels = list(format = "{value}%"),
+        gridLineWidth = 1
+      ) %>%
+      hc_tooltip(
+        shared = TRUE,
+        pointFormat = "<b>{series.name}:</b> {point.y:.2f}%<br>"
+      ) %>%
+      hc_plotOptions(
+        line = list(
+          marker = list(
+            enabled = TRUE
+          )
+        )
+      ) %>%
+      hc_exporting(enabled = TRUE) %>%
+      hc_subtitle(text = "Source: Vanuatu Bureau of Statistics")
+  })
+  
+  
+  
 }
 
 shinyApp(ui, server)
