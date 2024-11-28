@@ -3,6 +3,7 @@ library(shiny)       # Core library for building interactive web applications
 library(bs4Dash)     # For creating dashboards using Bootstrap 4 with Shiny
 #library(fresh)      # For customizing the theme
 library(highcharter) # For creating interactive charts using Highcharts
+library(DT)
 
 
 #theme <- create_theme(
@@ -249,10 +250,10 @@ ui <- dashboardPage(
             collapsible = FALSE,
             solidHeader = TRUE,
             p("This section provides detailed insights into the technical implementation of the CPI Dashboard. 
-        The app is designed to be fully reproducible and dynamically responsive to new data. 
-        Whenever there is an update to the CPI data, the only requirement is to update the underlying 
-        SQLite database. The dashboard, including charts, tables, and descriptive text, automatically 
-        adapts to reflect the updated data.")
+      The app is designed to be fully reproducible and dynamically responsive to new data. 
+      Whenever there is an update to the CPI data, the only requirement is to update the underlying 
+      SQLite database. The dashboard, including charts, tables, and descriptive text, automatically 
+      adapts to reflect the updated data.")
           )
         ),
         
@@ -304,8 +305,8 @@ ui <- dashboardPage(
             collapsible = TRUE,
             solidHeader = TRUE,
             p("The app connects to an SQLite database to fetch CPI data. 
-         This setup ensures that updates are seamless—simply replace or update the database, 
-         and the dashboard automatically adapts to reflect the new data."),
+      This setup ensures that updates are seamless—simply replace or update the database, 
+      and the dashboard automatically adapts to reflect the new data."),
             tags$ul(
               tags$li("Database integration is achieved using ", strong("DBI"), " and ", strong("RSQLite"), "."),
               tags$li("Data manipulation is performed with ", strong("dplyr"), "."),
@@ -325,8 +326,8 @@ dbDisconnect(db_connection)")
             collapsible = TRUE,
             solidHeader = TRUE,
             p("The app uses ", strong("highcharter"), " and ", strong("DT"), " to create interactive charts and tables. 
-         These components are directly tied to the reactive data pipeline, ensuring that changes in the 
-         database are immediately reflected in the visualizations and data tables."),
+      These components are directly tied to the reactive data pipeline, ensuring that changes in the 
+      database are immediately reflected in the visualizations and data tables."),
             pre(
               code("output$bar_chart <- renderHighchart({
   data <- filtered_data() %>%
@@ -355,13 +356,26 @@ dbDisconnect(db_connection)")
             collapsible = TRUE,
             solidHeader = TRUE,
             p("The app is deployable using ", strong("rsconnect"), ". Ensure all dependencies are installed before deployment. 
-        The reproducibility design ensures minimal maintenance even after deployment."),
+      The reproducibility design ensures minimal maintenance even after deployment."),
             pre(
               code("rsconnect::deployApp()")
             )
           )
+        ),
+        
+        fluidRow(
+          box(
+            title = "GitHub Repository",
+            width = 12,
+            status = "info",
+            collapsible = TRUE,
+            solidHeader = TRUE,
+            p("For the source code and further details, visit the GitHub repository:"),
+            HTML('<a href="https://github.com/htevilili1991/CPI-Dashboard" target="_blank">https://github.com/htevilili1991/CPI-Dashboard</a>')
+          )
         )
       )
+      
       
       
     )
@@ -377,7 +391,7 @@ server <- function(input, output, session) {
   library(highcharter)
   library(dplyr)
   library(DT)
-  
+
   repository <- file.path(dirname(rstudioapi::getSourceEditorContext()$path))
   setwd(repository) # sets the working directory to the 'repository' variable
   
@@ -386,6 +400,7 @@ server <- function(input, output, session) {
   
   # Load dataset
   expenditure_data <- dbReadTable(db_connection, "exp_comp")
+  yearly_data <- dbReadTable(db_connection, "yearly_comp")
   
   # Disconnect from the database
   dbDisconnect(db_connection)
