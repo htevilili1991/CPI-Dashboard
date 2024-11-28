@@ -215,16 +215,16 @@ ui <- dashboardPage(
                 type = "tabs",
                 status = "olive",
                 solidHeader = TRUE,
-                
                 tabPanel(
-                  "Quarterly",
-                  highchartOutput("quarterly_trend_chart")
-                  
+                  "Annual",
+                  highchartOutput("annual_trend_chart")
                 ),
                 tabPanel(
-                  "Annual"
+                  "Quarterly",
+                  HTML("<p style='color: red; font-weight: bold;'>Below Quarterly CPI chart still needs work.</p>"),
+                  highchartOutput("quarterly_trend_chart")
+                  
                 )
-                
               )
             )
         )
@@ -377,6 +377,9 @@ server <- function(input, output, session) {
   library(highcharter)
   library(dplyr)
   library(DT)
+  
+  repository <- file.path(dirname(rstudioapi::getSourceEditorContext()$path))
+  setwd(repository) # sets the working directory to the 'repository' variable
   
   # Connect to SQLite database
   db_connection <- dbConnect(RSQLite::SQLite(), "cpi.db")
@@ -554,7 +557,70 @@ server <- function(input, output, session) {
       hc_subtitle(text = "Source: Vanuatu Bureau of Statistics")
   })
   
+  # Filter the data for "Year on Year Percentage Change"
+  annual_trend_data <- yearly_data %>%
+    filter(Indicator == "Year on Year Percentage Change") %>%
+    arrange(Year, Location)
   
+  # Render the line chart with a draggable range slider (navigator) with unique years
+  output$annual_trend_chart <- renderHighchart({
+    # Get the unique years for the range slider
+    unique_years <- unique(annual_trend_data$Year)
+    
+    # Create the highchart object
+    hchart(
+      annual_trend_data,
+      type = "line",
+      hcaes(
+        x = Year,  # Use Year for x-axis
+        y = Value,  # CPI change on y-axis
+        group = Location  # Different lines for each Location
+      )
+    ) %>%
+      hc_title(
+        text = "Annual CPI Trends by Location"
+      ) %>%
+      hc_xAxis(
+        title = list(text = "Year"),
+        labels = list(rotation = -45),
+        min = min(annual_trend_data$Year),  # Set minimum to the first year
+        max = max(annual_trend_data$Year),  # Set maximum to the last year
+        tickInterval = 1  # Tick interval is 1 year
+      ) %>%
+      hc_yAxis(
+        title = list(text = "CPI Change (%)"),
+        labels = list(format = "{value}%"),
+        gridLineWidth = 1
+      ) %>%
+      hc_tooltip(
+        pointFormat = "CPI Change: <b>{point.y}%</b>"
+      ) %>%
+      hc_legend(
+        title = list(text = "Location")
+      ) %>%
+      hc_add_theme(hc_theme_google()) %>%
+      hc_exporting(enabled = TRUE) %>%
+      hc_chart(zoomType = "xy") %>%
+      hc_navigator(
+        enabled = TRUE,  # Enable the navigator (range slider)
+        series = list(
+          type = "line",
+          name = "Navigator",  # Optional name for the navigator
+          data = data.frame(Year = unique_years, Value = rep(NA, length(unique_years)))  # Use unique years
+        ),
+        xAxis = list(
+          min = min(annual_trend_data$Year),  # Start range from the first year
+          max = max(annual_trend_data$Year)   # End range at the last year
+        ),
+        handles = list(
+          left = list(enabled = TRUE),  # Allow dragging the left handle
+          right = list(enabled = TRUE)  # Allow dragging the right handle
+        )
+      ) %>%
+      hc_rangeSelector(
+        enabled = FALSE  # Disable the default range selector if you are using the navigator
+      )
+  })
   
 }
 
